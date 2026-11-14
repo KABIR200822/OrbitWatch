@@ -346,7 +346,7 @@ async function initOrbitalVisualizer() {
     status.textContent = `${payload.group} DATA LOADED · ${payload.cached ? "CACHED" : "FRESH"}`;
     document.querySelector("#orbit-refresh").addEventListener("click", updatePositions);
     const groupSelector = document.querySelector("#orbit-group");
-    groupSelector.addEventListener("change", () => {
+    groupSelector.onchange = () => {
       if (visualizerInstance && !visualizerInstance.isDestroyed()) visualizerInstance.destroy();
       visualizerInstance = null;
       const globe = document.querySelector("#orbit-globe");
@@ -354,7 +354,7 @@ async function initOrbitalVisualizer() {
       globe.innerHTML = "";
       document.querySelector("#orbit-selected").textContent = "Select a satellite marker on the globe to inspect it.";
       initOrbitalVisualizer();
-    });
+    };
     const playButton = document.querySelector("#orbit-play");
     const speedButton = document.querySelector("#orbit-speed");
     const speeds = [1, 5, 20];
@@ -399,7 +399,11 @@ function showPage(pageName) {
         <input id="satellite-search" class="satellite-search" type="search" placeholder="Search by satellite name or NORAD ID…" autocomplete="off" />
         <div id="satellite-source-note" class="satellite-source-note">Waiting for catalogue response…</div><div id="satellite-results" class="satellite-results"></div></section>
         <section id="satellite-detail" class="module-details satellite-detail" hidden></section>`;
-      loadSatelliteExplorer();
+      document.querySelector("#satellite-group").addEventListener("change", event => {
+        document.querySelector("#satellite-detail").hidden = true;
+        loadSatelliteExplorer(event.target.value);
+      });
+      loadSatelliteExplorer("STATIONS");
     } else if (pageName === "visualizer") {
       moduleView.innerHTML = `
         <section class="module-hero satellite-hero visualizer-heading"><div><div class="eyebrow">CESIUMJS / SGP4 ORBIT PROPAGATION</div><h2>Orbital Visualizer</h2><p>Explore catalogue satellites around a 3D Earth. Positions are calculated estimates based on published orbital elements.</p></div><span class="module-status-pill">3D VIEW</span></section>
