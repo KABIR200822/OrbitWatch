@@ -171,7 +171,115 @@ const dashboardSections = [
 const moduleView = document.querySelector("#module-view");
 const pageTitle = document.querySelector(".topbar h1");
 
-function showPage(pageName) {
+
+let satelliteRecords = [];
+
+function escapeHTML(value) {
+  return String(value ?? "—").replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[character]);
+}
+
+function formatNumber(value, digits = 2) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(digits) : "—";
+}
+
+function renderSatelliteResults(records) {
+  const results = document.querySelector("#satellite-results");
+  const count = document.querySelector("#satellite-count");
+  if (!results || !count) return;
+
+  count.textContent = `${records.length} objects found`;
+  if (records.length === 0) {
+    results.innerHTML = '<div class="empty-state">No matching satellites in the Space Stations catalogue. Try another name or NORAD ID.</div>';
+    return;
+  }
+
+  results.innerHTML = records.map((satellite, index) => `
+    <button class="satellite-result" type="button" data-satellite-index="${index}">
+      <span class="satellite-result-symbol">◉</span>
+      <span class="satellite-result-name">
+        <strong>${escapeHTML(satellite.OBJECT_NAME)}</strong>
+        <small>NORAD ID: ${escapeHTML(satellite.NORAD_CAT_ID)}</small>
+      </span>
+      <span class="satellite-result-meta">
+        <small>INCLINATION</small>
+        <strong>${formatNumber(satellite.INCLINATION)}°</strong>
+      </span>
+      <span class="satellite-result-meta">
+        <small>ECCENTRICITY</small>
+        <strong>${formatNumber(satellite.ECCENTRICITY, 4)}</strong>
+      </span>
+      <span class="satellite-result-arrow">↗</span>
+    </button>
+  `).join("");
+
+  results.querySelectorAll(".satellite-result").forEach((button, index) => {
+    button.addEventListener("click", () => showSatelliteDetails(records[index]));
+  });
+}
+
+function showSatelliteDetails(satellite) {
+  const details = document.querySelector("#satellite-detail");
+  if (!details) return;
+
+  details.innerHTML = `
+    <div class="eyebrow">OBJECT PROFILE / ORBITAL ELEMENTS</div>
+    <h3>${escapeHTML(satellite.OBJECT_NAME)}</h3>
+    <div class="detail-grid">
+      <div><small>NORAD CATALOG ID</small><strong>${escapeHTML(satellite.NORAD_CAT_ID)}</strong></div>
+      <div><small>INTERNATIONAL DESIGNATOR</small><strong>${escapeHTML(satellite.INTLDES)}</strong></div>
+      <div><small>DATA EPOCH (UTC)</small><strong>${escapeHTML(satellite.EPOCH)}</strong></div>
+      <div><small>INCLINATION</small><strong>${formatNumber(satellite.INCLINATION)}°</strong></div>
+      <div><small>ECCENTRICITY</small><strong>${formatNumber(satellite.ECCENTRICITY, 6)}</strong></div>
+      <div><small>MEAN MOTION</small><strong>${formatNumber(satellite.MEAN_MOTION, 5)} rev/day</strong></div>
+      <div><small>RAAN</small><strong>${formatNumber(satellite.RA_OF_ASC_NODE)}°</strong></div>
+      <div><small>ARGUMENT OF PERICENTER</small><strong>${formatNumber(satellite.ARG_OF_PERICENTER)}°</strong></div>
+    </div>
+    <p class="module-note">These are published orbital elements, not live telemetry. They describe the orbit at the data epoch shown above.</p>
+  `;
+  details.hidden = false;
+  details.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+async function loadSatelliteExplorer() {
+  const results = document.querySelector("#satellite-results");
+  if (!results) return;
+
+  results.innerHTML = '<div class="loading-state"><span class="loading-spinner"></span> Contacting CelesTrak catalogue…</div>';
+
+  try {
+    const response = await fetch("/api/satellites");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.details || payload.error || "Satellite data request failed.");
+
+    satelliteRecords = payload.satellites || [];
+    const search = document.querySelector("#satellite-search");
+    const sourceNote = document.querySelector("#satellite-source-note");
+    if (sourceNote) {
+      const timestamp = new Date(payload.fetchedAt).toLocaleString();
+      sourceNote.textContent = `Source: CelesTrak · Space Stations group · Retrieved: ${timestamp} · ${payload.cached ? "cached" : "freshly fetched"}`;
+    }
+
+    renderSatelliteResults(satelliteRecords);
+
+    if (search) {
+      search.addEventListener("input", () => {
+        const term = search.value.trim().toLowerCase();
+        const filtered = satelliteRecords.filter(satellite =>
+          String(satellite.OBJECT_NAME || "").toLowerCase().includes(term) ||
+          String(satellite.NORAD_CAT_ID || "").includes(term)
+        );
+        renderSatelliteResults(filtered);
+      });
+    }
+  } catch (error) {
+    results.innerHTML = `<div class="error-state">Unable to load the catalogue. ${escapeHTML(error.message)}<br><span>Check your internet connection and try again.</span><button id="retry-satellites" class="secondary-button" type="button">Retry connection</button></div>`;
+    document.querySelector("#retry-satellites")?.addEventListener("click", loadSatelliteExplorer);
+  }
+}
+\nfunction showPage(pageName) {
   const page = pages[pageName] || pages.dashboard;
   const isDashboard = pageName === "dashboard";
 
@@ -184,21 +292,44 @@ function showPage(pageName) {
 
   moduleView.hidden = isDashboard;
   if (!isDashboard) {
-    moduleView.innerHTML = `
-      <section class="module-hero">
-        <div class="module-hero-icon">${page.icon}</div>
-        <div class="eyebrow">${page.eyebrow}</div>
-        <h2>${page.title}</h2>
-        <p>${page.description}</p>
-        <span class="module-status-pill">${page.status}</span>
-      </section>
-      <section class="module-details">
-        <div class="eyebrow">PLANNED CAPABILITIES</div>
-        <h3>What this module will do</h3>
-        <ul>${page.items.map(item => `<li>${item}</li>`).join("")}</ul>
-        <p class="module-note">This page is now connected to the navigation. Its data and interactive tools will be implemented in the next development steps.</p>
-      </section>
-    `;
+    if (pageName === "satellites") {
+      moduleView.innerHTML = `
+        <section class="module-hero satellite-hero">
+          <div class="module-hero-icon">◉</div>
+          <div class="eyebrow">CELESTRAK / GP ORBITAL DATA</div>
+          <h2>Satellite Explorer</h2>
+          <p>Search a starter catalogue of space stations and inspect their published orbital elements.</p>
+          <span class="module-status-pill">LIVE CATALOGUE CONNECTION</span>
+        </section>
+        <section class="module-details satellite-browser">
+          <div class="satellite-toolbar">
+            <div><div class="eyebrow">OBJECT DATABASE</div><h3>Space Stations</h3></div>
+            <span id="satellite-count" class="data-count">Loading catalogue…</span>
+          </div>
+          <input id="satellite-search" class="satellite-search" type="search" placeholder="Search by satellite name or NORAD ID…" autocomplete="off" />
+          <div id="satellite-source-note" class="satellite-source-note">Waiting for catalogue response…</div>
+          <div id="satellite-results" class="satellite-results"></div>
+        </section>
+        <section id="satellite-detail" class="module-details satellite-detail" hidden></section>
+      `;
+      loadSatelliteExplorer();
+    } else {
+      moduleView.innerHTML = `
+        <section class="module-hero">
+          <div class="module-hero-icon">${page.icon}</div>
+          <div class="eyebrow">${page.eyebrow}</div>
+          <h2>${page.title}</h2>
+          <p>${page.description}</p>
+          <span class="module-status-pill">${page.status}</span>
+        </section>
+        <section class="module-details">
+          <div class="eyebrow">PLANNED CAPABILITIES</div>
+          <h3>What this module will do</h3>
+          <ul>${page.items.map(item => `<li>${item}</li>`).join("")}</ul>
+          <p class="module-note">This module will be implemented in a later development stage.</p>
+        </section>
+      `;
+    }
   }
 
   document.querySelectorAll(".nav-link").forEach(link => {
