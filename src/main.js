@@ -105,12 +105,13 @@ function renderSatelliteResults(records) {
   const results = document.querySelector("#satellite-results");
   const count = document.querySelector("#satellite-count");
   if (!results || !count) return;
-  count.textContent = `${records.length} objects found`;
+  count.textContent = `${records.length.toLocaleString()} objects found`;
+  const visibleRecords = records.slice(0, 100);
   if (!records.length) {
-    results.innerHTML = '<div class="empty-state">No matching satellites in the Space Stations catalogue. Try another name or NORAD ID.</div>';
+    results.innerHTML = '<div class="empty-state">No matching objects in this catalogue. Try another name or NORAD ID.</div>';
     return;
   }
-  results.innerHTML = records.map((satellite, index) => `
+  results.innerHTML = visibleRecords.map((satellite, index) => `
     <button class="satellite-result" type="button" data-satellite-index="${index}">
       <span class="satellite-result-symbol">◉</span>
       <span class="satellite-result-name"><strong>${escapeHTML(satellite.OBJECT_NAME)}</strong><small>NORAD ID: ${escapeHTML(satellite.NORAD_CAT_ID)}</small></span>
@@ -119,8 +120,11 @@ function renderSatelliteResults(records) {
       <span class="satellite-result-arrow">↗</span>
     </button>`).join("");
   results.querySelectorAll(".satellite-result").forEach((button, index) => {
-    button.addEventListener("click", () => showSatelliteDetails(records[index]));
+    button.addEventListener("click", () => showSatelliteDetails(visibleRecords[index]));
   });
+  if (records.length > visibleRecords.length) {
+    results.insertAdjacentHTML("beforeend", '<div class="catalogue-limit-note">Showing the first 100 results. Use search to narrow the catalogue.</div>');
+  }
 }
 
 function showSatelliteDetails(satellite) {
@@ -142,28 +146,34 @@ function showSatelliteDetails(satellite) {
   details.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-async function loadSatelliteExplorer() {
+async function loadSatelliteExplorer(group) {
   const results = document.querySelector("#satellite-results");
-  if (!results) return;
+  const selector = document.querySelector("#satellite-group");
+  if (!results || !selector) return;
+  const selectedGroup = group || selector.value;
   results.innerHTML = '<div class="loading-state"><span class="loading-spinner"></span> Contacting CelesTrak catalogue…</div>';
   try {
-    const response = await fetch("/api/satellites");
+    const response = await fetch(`/api/satellites?group=${encodeURIComponent(selectedGroup)}`);
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.details || payload.error || "Satellite data request failed.");
     satelliteRecords = payload.satellites || [];
     const search = document.querySelector("#satellite-search");
     const sourceNote = document.querySelector("#satellite-source-note");
-    if (sourceNote) sourceNote.textContent = `Source: CelesTrak · Space Stations group · Retrieved: ${new Date(payload.fetchedAt).toLocaleString()} · ${payload.cached ? "cached" : "freshly fetched"}`;
-    renderSatelliteResults(satelliteRecords);
-    search?.addEventListener("input", () => {
+    if (sourceNote) sourceNote.textContent = `Source: CelesTrak · ${payload.group} group · Retrieved: ${new Date(payload.fetchedAt).toLocaleString()} · ${payload.cached ? "cached" : "freshly fetched"}`;
+    const heading = document.querySelector("#satellite-group-title");
+    if (heading) heading.textContent = selector.options[selector.selectedIndex].text;
+    const renderSearch = () => {
       const term = search.value.trim().toLowerCase();
       renderSatelliteResults(satelliteRecords.filter(s =>
-        String(s.OBJECT_NAME || "").toLowerCase().includes(term) || String(s.NORAD_CAT_ID || "").includes(term)
+        String(s.OBJECT_NAME || "").toLowerCase().includes(term) ||
+        String(s.NORAD_CAT_ID || "").includes(term)
       ));
-    });
+    };
+    search.oninput = renderSearch;
+    renderSearch();
   } catch (error) {
     results.innerHTML = `<div class="error-state">Unable to load the catalogue. ${escapeHTML(error.message)}<br><span>Check your internet connection and try again.</span><button id="retry-satellites" class="secondary-button" type="button">Retry connection</button></div>`;
-    document.querySelector("#retry-satellites")?.addEventListener("click", loadSatelliteExplorer);
+    document.querySelector("#retry-satellites")?.addEventListener("click", () => loadSatelliteExplorer(selectedGroup));
   }
 }
 
@@ -205,7 +215,8 @@ async function initOrbitalVisualizer() {
     viewer.clock.shouldAnimate = true;
     viewer.clock.multiplier = 1;
 
-    const response = await fetch("/api/satellites");
+    const selectedGroup = document.querySelector("#orbit-group")?.value || "STATIONS";
+    const response = await fetch(`/api/satellites?group=${encodeURIComponent(selectedGroup)}`);
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.details || payload.error || "Could not retrieve orbital elements.");
     const records = (payload.satellites || []).filter(item =>
@@ -332,8 +343,18 @@ async function initOrbitalVisualizer() {
       renderSelectedDetails();
     });
     count.textContent = `${tracked.length} objects plotted`;
-    status.textContent = `ORBITAL DATA LOADED · ${payload.cached ? "CACHED" : "FRESH"}`;
+    status.textContent = `${payload.group} DATA LOADED · ${payload.cached ? "CACHED" : "FRESH"}`;
     document.querySelector("#orbit-refresh").addEventListener("click", updatePositions);
+    const groupSelector = document.querySelector("#orbit-group");
+    groupSelector.addEventListener("change", () => {
+      if (visualizerInstance && !visualizerInstance.isDestroyed()) visualizerInstance.destroy();
+      visualizerInstance = null;
+      const globe = document.querySelector("#orbit-globe");
+      globe.dataset.initialized = "false";
+      globe.innerHTML = "";
+      document.querySelector("#orbit-selected").textContent = "Select a satellite marker on the globe to inspect it.";
+      initOrbitalVisualizer();
+    });
     const playButton = document.querySelector("#orbit-play");
     const speedButton = document.querySelector("#orbit-speed");
     const speeds = [1, 5, 20];
@@ -373,7 +394,8 @@ function showPage(pageName) {
     if (pageName === "satellites") {
       moduleView.innerHTML = `
         <section class="module-hero satellite-hero"><div class="module-hero-icon">◉</div><div class="eyebrow">CELESTRAK / GP ORBITAL DATA</div><h2>Satellite Explorer</h2><p>Search a starter catalogue of space stations and inspect their published orbital elements.</p><span class="module-status-pill">LIVE CATALOGUE CONNECTION</span></section>
-        <section class="module-details satellite-browser"><div class="satellite-toolbar"><div><div class="eyebrow">OBJECT DATABASE</div><h3>Space Stations</h3></div><span id="satellite-count" class="data-count">Loading catalogue…</span></div>
+        <section class="module-details satellite-browser"><div class="satellite-toolbar"><div><div class="eyebrow">OBJECT DATABASE</div><h3 id="satellite-group-title">Space Stations</h3></div><span id="satellite-count" class="data-count">Loading catalogue…</span></div>
+        <label class="catalogue-label" for="satellite-group">CATALOGUE GROUP</label><select id="satellite-group" class="catalogue-select"><option value="STATIONS">Space Stations</option><option value="ACTIVE">Active Satellites</option><option value="STARLINK">Starlink</option><option value="WEATHER">Weather Satellites</option><option value="GPS-OPS">GPS Operational</option></select>
         <input id="satellite-search" class="satellite-search" type="search" placeholder="Search by satellite name or NORAD ID…" autocomplete="off" />
         <div id="satellite-source-note" class="satellite-source-note">Waiting for catalogue response…</div><div id="satellite-results" class="satellite-results"></div></section>
         <section id="satellite-detail" class="module-details satellite-detail" hidden></section>`;
@@ -382,12 +404,13 @@ function showPage(pageName) {
       moduleView.innerHTML = `
         <section class="module-hero satellite-hero visualizer-heading"><div><div class="eyebrow">CESIUMJS / SGP4 ORBIT PROPAGATION</div><h2>Orbital Visualizer</h2><p>Explore catalogue satellites around a 3D Earth. Positions are calculated estimates based on published orbital elements.</p></div><span class="module-status-pill">3D VIEW</span></section>
         <section class="orbit-workspace">
+          <div class="orbit-catalogue-bar"><label for="orbit-group">CATALOGUE</label><select id="orbit-group" class="catalogue-select"><option value="STATIONS">Space Stations</option><option value="ACTIVE">Active Satellites</option><option value="STARLINK">Starlink</option><option value="WEATHER">Weather Satellites</option><option value="GPS-OPS">GPS Operational</option></select></div>
           <div class="orbit-toolbar"><div><span class="status-dot"></span><span id="orbit-status">CONNECTING TO ORBITAL DATA…</span></div><div class="orbit-toolbar-right"><span id="orbit-object-count">Loading objects…</span><button id="orbit-play" class="secondary-button" aria-pressed="false">Pause</button><button id="orbit-speed" class="secondary-button">Speed: 1×</button><button id="orbit-refresh" class="secondary-button">Refresh</button></div></div>
           <div id="orbit-globe" class="orbit-globe"></div>
-          <div class="orbit-legend"><span><i class="legend-dot cyan"></i> Tracked satellite</span><span><i class="legend-line"></i> Estimated orbital path</span><span>Source: CelesTrak · Space Stations group</span></div>
+          <div class="orbit-legend"><span><i class="legend-dot cyan"></i> Tracked satellite</span><span><i class="legend-line"></i> Estimated orbital path</span><span>Source: CelesTrak · selectable GP groups</span></div>
           <div id="orbit-selected" class="orbit-selected">Select a satellite marker on the globe to inspect it.</div>
         </section>
-        <p class="module-note">Important: this is an educational visualization, not live spacecraft telemetry. SGP4 positions are estimates from the latest available orbital elements. The current feed is limited to CelesTrak's Space Stations group.</p>`;
+        <p class="module-note">Important: this is an educational visualization, not live spacecraft telemetry. SGP4 positions are estimates from the latest available orbital elements. The selected feed is a CelesTrak catalogue group. Only the first 80 usable objects are plotted at once for performance.</p>`;
       initOrbitalVisualizer();
     } else {
       moduleView.innerHTML = `
