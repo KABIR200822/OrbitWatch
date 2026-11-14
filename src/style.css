@@ -154,3 +154,12 @@ footer span { color: var(--cyan); padding: 0 5px; }
 .orbit-selected-metrics small { display: block; color: #71809c; font: 8px "DM Mono",monospace; letter-spacing: .6px; }
 .orbit-selected-metrics b { display: block; margin-top: 6px; color: #dce8fa; font: 10px "DM Mono",monospace; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .orbit-selected-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+
+.catalogue-label, .orbit-catalogue-bar label { display: block; margin: 16px 0 7px; color: #71809c; font: 8px "DM Mono",monospace; letter-spacing: 1px; }
+.catalogue-select { min-width: 220px; padding: 11px 13px; border: 1px solid rgba(101,228,244,.25); border-radius: 6px; color: #dce8fa; background: #080e1c; font: 11px "Manrope",sans-serif; outline: none; }
+.catalogue-select:focus { border-color: rgba(101,228,244,.7); }
+.orbit-catalogue-bar { display: flex; align-items: center; gap: 14px; padding: 12px 15px; border-bottom: 1px solid var(--line); }
+.orbit-catalogue-bar label { margin: 0; }
+.orbit-catalogue-bar .catalogue-select { min-width: 190px; }
+.catalogue-limit-note { padding: 13px; color: #7e8da8; text-align: center; font: 9px "DM Mono",monospace; }
+@media (max-width: 760px) { .orbit-catalogue-bar { align-items: flex-start; flex-direction: column; gap: 8px; } .catalogue-select { width: 100%; } }
