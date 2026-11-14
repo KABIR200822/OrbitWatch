@@ -286,6 +286,23 @@ async function initOrbitalVisualizer() {
       }
     }
 
+    let selectedItem = null;
+    const renderSelectedDetails = () => {
+      if (!selectedItem?.currentGeo) return;
+      const geo = selectedItem.currentGeo;
+      const period = 1440 / Number(selectedItem.record.MEAN_MOTION);
+      selected.innerHTML = `
+        <div class="orbit-selected-heading"><strong>${escapeHTML(selectedItem.record.OBJECT_NAME)}</strong><span>NORAD ID: ${escapeHTML(selectedItem.record.NORAD_CAT_ID)}</span></div>
+        <div class="orbit-selected-metrics">
+          <span><small>ALTITUDE</small><b>${formatNumber(geo.height, 1)} km</b></span>
+          <span><small>LATITUDE</small><b>${formatNumber(Satellite.degreesLat(geo.latitude), 2)}°</b></span>
+          <span><small>LONGITUDE</small><b>${formatNumber(Satellite.degreesLong(geo.longitude), 2)}°</b></span>
+          <span><small>INCLINATION</small><b>${formatNumber(selectedItem.record.INCLINATION)}°</b></span>
+          <span><small>ORBITAL PERIOD</small><b>${formatNumber(period, 1)} min</b></span>
+          <span><small>DATA EPOCH</small><b>${escapeHTML(selectedItem.record.EPOCH)}</b></span>
+        </div>`;
+    };
+
     const updatePositions = () => {
       const now = new Date();
       const gmst = Satellite.gstime(now);
@@ -293,12 +310,14 @@ async function initOrbitalVisualizer() {
         const state = Satellite.propagate(item.satrec, now);
         if (!state?.position) continue;
         const geo = Satellite.eciToGeodetic(state.position, gmst);
+        item.currentGeo = geo;
         item.entity.position = Cesium.Cartesian3.fromDegrees(
           Satellite.degreesLong(geo.longitude),
           Satellite.degreesLat(geo.latitude),
           Math.max(0, geo.height * 1000)
         );
       }
+      renderSelectedDetails();
     };
     let lastUpdate = 0;
     viewer.clock.onTick.addEventListener(() => {
@@ -309,13 +328,27 @@ async function initOrbitalVisualizer() {
     });
     viewer.selectedEntityChanged.addEventListener(entity => {
       if (!entity) return;
-      const item = tracked.find(candidate => candidate.entity === entity);
-      if (!item) return;
-      selected.innerHTML = `<strong>${escapeHTML(item.record.OBJECT_NAME)}</strong><span>NORAD ID: ${escapeHTML(item.record.NORAD_CAT_ID)}</span><span>Epoch: ${escapeHTML(item.record.EPOCH)}</span>`;
+      selectedItem = tracked.find(candidate => candidate.entity === entity) || null;
+      renderSelectedDetails();
     });
     count.textContent = `${tracked.length} objects plotted`;
     status.textContent = `ORBITAL DATA LOADED · ${payload.cached ? "CACHED" : "FRESH"}`;
     document.querySelector("#orbit-refresh").addEventListener("click", updatePositions);
+    const playButton = document.querySelector("#orbit-play");
+    const speedButton = document.querySelector("#orbit-speed");
+    const speeds = [1, 5, 20];
+    let speedIndex = 0;
+    playButton.addEventListener("click", () => {
+      viewer.clock.shouldAnimate = !viewer.clock.shouldAnimate;
+      playButton.textContent = viewer.clock.shouldAnimate ? "Pause" : "Resume";
+      playButton.setAttribute("aria-pressed", String(!viewer.clock.shouldAnimate));
+    });
+    speedButton.addEventListener("click", () => {
+      speedIndex = (speedIndex + 1) % speeds.length;
+      viewer.clock.multiplier = speeds[speedIndex];
+      speedButton.textContent = `Speed: ${speeds[speedIndex]}×`;
+    });
+    updatePositions();
     visualizerInstance = viewer;
   } catch (error) {
     console.error("Orbital visualizer failed:", error);
@@ -349,7 +382,7 @@ function showPage(pageName) {
       moduleView.innerHTML = `
         <section class="module-hero satellite-hero visualizer-heading"><div><div class="eyebrow">CESIUMJS / SGP4 ORBIT PROPAGATION</div><h2>Orbital Visualizer</h2><p>Explore catalogue satellites around a 3D Earth. Positions are calculated estimates based on published orbital elements.</p></div><span class="module-status-pill">3D VIEW</span></section>
         <section class="orbit-workspace">
-          <div class="orbit-toolbar"><div><span class="status-dot"></span><span id="orbit-status">CONNECTING TO ORBITAL DATA…</span></div><div class="orbit-toolbar-right"><span id="orbit-object-count">Loading objects…</span><button id="orbit-refresh" class="secondary-button">Update positions</button></div></div>
+          <div class="orbit-toolbar"><div><span class="status-dot"></span><span id="orbit-status">CONNECTING TO ORBITAL DATA…</span></div><div class="orbit-toolbar-right"><span id="orbit-object-count">Loading objects…</span><button id="orbit-play" class="secondary-button" aria-pressed="false">Pause</button><button id="orbit-speed" class="secondary-button">Speed: 1×</button><button id="orbit-refresh" class="secondary-button">Refresh</button></div></div>
           <div id="orbit-globe" class="orbit-globe"></div>
           <div class="orbit-legend"><span><i class="legend-dot cyan"></i> Tracked satellite</span><span><i class="legend-line"></i> Estimated orbital path</span><span>Source: CelesTrak · Space Stations group</span></div>
           <div id="orbit-selected" class="orbit-selected">Select a satellite marker on the globe to inspect it.</div>
