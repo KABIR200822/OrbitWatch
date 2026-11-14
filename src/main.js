@@ -250,7 +250,8 @@ async function initOrbitalVisualizer() {
             color: palette[tracked.length % palette.length],
             outlineColor: Cesium.Color.WHITE.withAlpha(0.8),
             outlineWidth: 1,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY
+            // Keep satellite markers behind the Earth hidden when they are on the far side.
+            disableDepthTestDistance: 0
           },
           label: {
             text: record.OBJECT_NAME,
