@@ -244,16 +244,20 @@ async function initOrbitalVisualizer() {
         const latitude = Satellite.degreesLat(geo.latitude);
         const altitude = Math.max(0, geo.height * 1000);
         const position = Cesium.Cartesian3.fromDegrees(longitude, latitude, altitude);
+        const orientation = Cesium.Transforms.headingPitchRollQuaternion(
+          position,
+          new Cesium.HeadingPitchRoll(0, 0, 0)
+        );
         const entity = viewer.entities.add({
           name: record.OBJECT_NAME,
           position,
-          point: {
-            pixelSize: 8,
-            color: palette[tracked.length % palette.length],
-            outlineColor: Cesium.Color.WHITE.withAlpha(0.8),
-            outlineWidth: 1,
-            // Keep satellite markers behind the Earth hidden when they are on the far side.
-            disableDepthTestDistance: 0
+          orientation,
+          model: {
+            uri: "/models/orbitwatch-satellite.gltf",
+            scale: 1,
+            minimumPixelSize: 18,
+            maximumScale: 100000,
+            runAnimations: false
           },
           label: {
             text: record.OBJECT_NAME,
@@ -325,10 +329,15 @@ async function initOrbitalVisualizer() {
         if (!state?.position) continue;
         const geo = Satellite.eciToGeodetic(state.position, gmst);
         item.currentGeo = geo;
-        item.entity.position = Cesium.Cartesian3.fromDegrees(
+        const position = Cesium.Cartesian3.fromDegrees(
           Satellite.degreesLong(geo.longitude),
           Satellite.degreesLat(geo.latitude),
           Math.max(0, geo.height * 1000)
+        );
+        item.entity.position = position;
+        item.entity.orientation = Cesium.Transforms.headingPitchRollQuaternion(
+          position,
+          new Cesium.HeadingPitchRoll(0, 0, 0)
         );
       }
       renderSelectedDetails();
