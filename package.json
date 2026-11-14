@@ -11,10 +11,13 @@
     "start": "node server/server.js"
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "cesium": "^1.146.0",
+    "express": "^5.1.0",
+    "satellite.js": "^7.2.0"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "vite-plugin-cesium": "^1.2.23"
   }
 }
