@@ -357,6 +357,58 @@ async function initOrbitalVisualizer() {
       selectedItem = tracked.find(candidate => candidate.entity === entity) || null;
       renderSelectedDetails();
     });
+
+    // Search only the objects currently plotted on this globe.
+    const mapSearch = document.querySelector("#orbit-map-search");
+    const mapSearchResults = document.querySelector("#orbit-map-search-results");
+    const findTrackedSatellites = () => {
+      const term = mapSearch.value.trim().toLowerCase();
+      if (!term) {
+        mapSearchResults.hidden = true;
+        mapSearchResults.innerHTML = "";
+        return [];
+      }
+      const matches = tracked.filter(item =>
+        String(item.record.OBJECT_NAME || "").toLowerCase().includes(term) ||
+        String(item.record.NORAD_CAT_ID || "").includes(term)
+      ).slice(0, 8);
+      mapSearchResults.innerHTML = matches.length
+        ? matches.map((item, index) => `
+          <button class="orbit-search-result" type="button" data-search-index="${index}">
+            <strong>${escapeHTML(item.record.OBJECT_NAME)}</strong>
+            <small>NORAD ID: ${escapeHTML(item.record.NORAD_CAT_ID)}</small>
+          </button>`).join("")
+        : '<div class="orbit-search-empty">No matching plotted satellites.</div>';
+      mapSearchResults.hidden = false;
+      mapSearchResults.querySelectorAll(".orbit-search-result").forEach((button, index) => {
+        button.addEventListener("click", () => focusSatellite(matches[index]));
+      });
+      return matches;
+    };
+    const focusSatellite = item => {
+      if (!item) return;
+      viewer.selectedEntity = item.entity;
+      mapSearch.value = item.record.OBJECT_NAME;
+      mapSearchResults.hidden = true;
+      const altitude = item.currentGeo ? Math.max(1200000, item.currentGeo.height * 1000 * 3) : 3000000;
+      viewer.flyTo(item.entity, {
+        duration: 1.5,
+        offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-35), altitude)
+      });
+    };
+    mapSearch.addEventListener("input", findTrackedSatellites);
+    mapSearch.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        const matches = findTrackedSatellites();
+        if (matches.length) focusSatellite(matches[0]);
+      } else if (event.key === "Escape") {
+        mapSearchResults.hidden = true;
+      }
+    });
+    document.addEventListener("click", event => {
+      if (!event.target.closest(".orbit-map-search-wrap")) mapSearchResults.hidden = true;
+    });
+
     count.textContent = `${tracked.length} objects plotted`;
     status.textContent = `${payload.group} DATA LOADED · ${payload.cached ? "CACHED" : "FRESH"}`;
     document.querySelector("#orbit-refresh").addEventListener("click", updatePositions);
@@ -425,7 +477,14 @@ function showPage(pageName) {
         <section class="orbit-workspace">
           <div class="orbit-catalogue-bar"><label for="orbit-group">CATALOGUE</label><select id="orbit-group" class="catalogue-select"><option value="STATIONS">Space Stations</option><option value="ACTIVE">Active Satellites</option><option value="STARLINK">Starlink</option><option value="WEATHER">Weather Satellites</option><option value="GPS-OPS">GPS Operational</option></select></div>
           <div class="orbit-toolbar"><div><span class="status-dot"></span><span id="orbit-status">CONNECTING TO ORBITAL DATA…</span></div><div class="orbit-toolbar-right"><span id="orbit-object-count">Loading objects…</span><button id="orbit-play" class="secondary-button" aria-pressed="false">Pause</button><button id="orbit-speed" class="secondary-button">Speed: 1×</button><button id="orbit-refresh" class="secondary-button">Refresh</button></div></div>
-          <div id="orbit-globe" class="orbit-globe"></div>
+          <div class="orbit-map-container">
+            <div class="orbit-map-search-wrap">
+              <span class="orbit-search-icon">⌕</span>
+              <input id="orbit-map-search" class="orbit-map-search" type="search" placeholder="Search plotted satellites by name or NORAD ID…" autocomplete="off" aria-label="Search plotted satellites" />
+              <div id="orbit-map-search-results" class="orbit-map-search-results" hidden></div>
+            </div>
+            <div id="orbit-globe" class="orbit-globe"></div>
+          </div>
           <div class="orbit-legend"><span><i class="legend-dot cyan"></i> Tracked satellite</span><span><i class="legend-line"></i> Estimated orbital path</span><span>Source: CelesTrak · selectable GP groups</span></div>
           <div id="orbit-selected" class="orbit-selected">Select a satellite marker on the globe to inspect it.</div>
         </section>
