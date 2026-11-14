@@ -17,6 +17,8 @@ const ALLOWED_GROUPS = new Set(["STATIONS", "ACTIVE", "STARLINK", "WEATHER", "GP
 const groupCache = new Map();
 const inFlightRequests = new Map();
 const groupCooldowns = new Map();
+const GLOBAL_COOLDOWN_FILE = path.join(cacheDirectory, "celestrak-cooldown.json");
+let globalCooldownUntil = 0;
 
 async function readDiskCache(group) {
   if (groupCache.has(group)) return groupCache.get(group);
@@ -32,6 +34,23 @@ async function readDiskCache(group) {
     // No saved cache is available yet.
   }
   return null;
+}
+
+async function readGlobalCooldown() {
+  try {
+    const saved = JSON.parse(await readFile(GLOBAL_COOLDOWN_FILE, "utf8"));
+    if (Number.isFinite(saved.until) && saved.until > Date.now()) {
+      globalCooldownUntil = saved.until;
+    }
+  } catch {
+    // No persisted CelesTrak cooldown.
+  }
+}
+
+async function saveGlobalCooldown(until) {
+  await mkdir(cacheDirectory, { recursive: true });
+  await writeFile(GLOBAL_COOLDOWN_FILE, JSON.stringify({ until }), "utf8");
+  globalCooldownUntil = until;
 }
 
 async function saveDiskCache(group, entry) {
@@ -71,11 +90,20 @@ app.get("/api/satellites", async (req, res) => {
     });
   }
 
+  await readGlobalCooldown();
   const cachedEntry = await readDiskCache(requestedGroup);
   const cacheIsFresh = cachedEntry &&
     Date.now() - cachedEntry.fetchedAt < CACHE_DURATION_MS;
 
   if (cacheIsFresh) return sendCatalogue(res, requestedGroup, cachedEntry, true);
+
+  if (Date.now() < globalCooldownUntil) {
+    if (cachedEntry) return sendCatalogue(res, requestedGroup, cachedEntry, true);
+    return res.status(503).json({
+      error: "CelesTrak requests are temporarily paused.",
+      details: `A previous catalogue request received HTTP 403. OrbitWatch will resume after ${new Date(globalCooldownUntil).toISOString()} and will not retry in the meantime.`
+    });
+  }
 
   const cooldownUntil = groupCooldowns.get(requestedGroup) || 0;
   if (Date.now() < cooldownUntil) {
@@ -107,7 +135,10 @@ app.get("/api/satellites", async (req, res) => {
     });
 
     if (!response.ok) {
-      const error = new Error(`CelesTrak returned HTTP ${response.status}`);
+      const responseDetails = (await response.text()).slice(0, 1200).trim();
+      const error = new Error(
+        `CelesTrak returned HTTP ${response.status}${responseDetails ? `: ${responseDetails}` : ""}`
+      );
       error.status = response.status;
       throw error;
     }
@@ -130,8 +161,14 @@ app.get("/api/satellites", async (req, res) => {
     console.error(`Satellite catalogue error (${requestedGroup}):`, error.message);
 
     if (error.status === 403) {
-      groupCooldowns.set(requestedGroup, Date.now() + ERROR_COOLDOWN_MS);
-      console.error(`${requestedGroup} requests paused for two hours to prevent repeated CelesTrak requests.`);
+      const until = Date.now() + ERROR_COOLDOWN_MS;
+      groupCooldowns.set(requestedGroup, until);
+      try {
+        await saveGlobalCooldown(until);
+      } catch (saveError) {
+        console.error("Could not persist CelesTrak cooldown:", saveError.message);
+      }
+      console.error("All CelesTrak catalogue requests paused for two hours after HTTP 403.");
     }
 
     if (cachedEntry) return sendCatalogue(res, requestedGroup, cachedEntry, true);
