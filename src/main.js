@@ -279,7 +279,8 @@ async function loadSatelliteExplorer() {
     document.querySelector("#retry-satellites")?.addEventListener("click", loadSatelliteExplorer);
   }
 }
-\nfunction showPage(pageName) {
+
+function showPage(pageName) {
   const page = pages[pageName] || pages.dashboard;
   const isDashboard = pageName === "dashboard";
 
