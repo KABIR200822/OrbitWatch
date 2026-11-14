@@ -1,17 +1,58 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
+const cacheDirectory = path.join(currentDirectory, ".cache");
 
 app.use(express.json());
 
 const CACHE_DURATION_MS = 2 * 60 * 60 * 1000;
+const ERROR_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const ALLOWED_GROUPS = new Set(["STATIONS", "ACTIVE", "STARLINK", "WEATHER", "GPS-OPS"]);
 const groupCache = new Map();
+const inFlightRequests = new Map();
+const groupCooldowns = new Map();
+
+async function readDiskCache(group) {
+  if (groupCache.has(group)) return groupCache.get(group);
+
+  try {
+    const raw = await readFile(path.join(cacheDirectory, `${group}.json`), "utf8");
+    const entry = JSON.parse(raw);
+    if (Array.isArray(entry.satellites) && Number.isFinite(entry.fetchedAt)) {
+      groupCache.set(group, entry);
+      return entry;
+    }
+  } catch {
+    // No saved cache is available yet.
+  }
+  return null;
+}
+
+async function saveDiskCache(group, entry) {
+  await mkdir(cacheDirectory, { recursive: true });
+  const filePath = path.join(cacheDirectory, `${group}.json`);
+  const temporaryPath = `${filePath}.tmp`;
+  await writeFile(temporaryPath, JSON.stringify(entry), "utf8");
+  const { rename } = await import("node:fs/promises");
+  await rename(temporaryPath, filePath);
+}
+
+function sendCatalogue(res, group, entry, cached) {
+  return res.json({
+    source: "CelesTrak",
+    group,
+    cached,
+    fetchedAt: new Date(entry.fetchedAt).toISOString(),
+    count: entry.satellites.length,
+    satellites: entry.satellites
+  });
+}
 
 app.get("/api/health", (req, res) => {
   res.json({
@@ -30,47 +71,77 @@ app.get("/api/satellites", async (req, res) => {
     });
   }
 
-  const cachedEntry = groupCache.get(requestedGroup);
+  const cachedEntry = await readDiskCache(requestedGroup);
   const cacheIsFresh = cachedEntry &&
     Date.now() - cachedEntry.fetchedAt < CACHE_DURATION_MS;
 
-  if (cacheIsFresh) {
-    return res.json({
-      source: "CelesTrak",
-      group: requestedGroup,
-      cached: true,
-      fetchedAt: new Date(cachedEntry.fetchedAt).toISOString(),
-      count: cachedEntry.satellites.length,
-      satellites: cachedEntry.satellites
+  if (cacheIsFresh) return sendCatalogue(res, requestedGroup, cachedEntry, true);
+
+  const cooldownUntil = groupCooldowns.get(requestedGroup) || 0;
+  if (Date.now() < cooldownUntil) {
+    if (cachedEntry) return sendCatalogue(res, requestedGroup, cachedEntry, true);
+    return res.status(503).json({
+      error: `${requestedGroup} requests are paused after a CelesTrak error.`,
+      details: "OrbitWatch will not repeatedly retry a failed catalogue request. Wait for the cooldown to expire before trying again."
     });
   }
 
-  try {
+  if (inFlightRequests.has(requestedGroup)) {
+    try {
+      const entry = await inFlightRequests.get(requestedGroup);
+      return sendCatalogue(res, requestedGroup, entry, true);
+    } catch (error) {
+      if (cachedEntry) return sendCatalogue(res, requestedGroup, cachedEntry, true);
+      return res.status(502).json({
+        error: `Could not retrieve the ${requestedGroup} catalogue from CelesTrak.`,
+        details: error.message
+      });
+    }
+  }
+
+  const requestPromise = (async () => {
     const url = `https://celestrak.org/NORAD/elements/gp.php?GROUP=${encodeURIComponent(requestedGroup)}&FORMAT=JSON`;
     const response = await fetch(url, {
       headers: { "User-Agent": "OrbitWatch/1.0 educational project" },
       signal: AbortSignal.timeout(30000)
     });
-    if (!response.ok) throw new Error(`CelesTrak returned HTTP ${response.status}`);
+
+    if (!response.ok) {
+      const error = new Error(`CelesTrak returned HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+
     const data = await response.json();
     if (!Array.isArray(data)) throw new Error("Unexpected data format received from CelesTrak.");
 
     const entry = { satellites: data, fetchedAt: Date.now() };
+    await saveDiskCache(requestedGroup, entry);
     groupCache.set(requestedGroup, entry);
-    res.json({
-      source: "CelesTrak",
-      group: requestedGroup,
-      cached: false,
-      fetchedAt: new Date(entry.fetchedAt).toISOString(),
-      count: data.length,
-      satellites: data
-    });
+    return entry;
+  })();
+
+  inFlightRequests.set(requestedGroup, requestPromise);
+
+  try {
+    const entry = await requestPromise;
+    return sendCatalogue(res, requestedGroup, entry, false);
   } catch (error) {
     console.error(`Satellite catalogue error (${requestedGroup}):`, error.message);
-    res.status(502).json({
+
+    if (error.status === 403) {
+      groupCooldowns.set(requestedGroup, Date.now() + ERROR_COOLDOWN_MS);
+      console.error(`${requestedGroup} requests paused for two hours to prevent repeated CelesTrak requests.`);
+    }
+
+    if (cachedEntry) return sendCatalogue(res, requestedGroup, cachedEntry, true);
+
+    return res.status(502).json({
       error: `Could not retrieve the ${requestedGroup} catalogue from CelesTrak.`,
       details: error.message
     });
+  } finally {
+    inFlightRequests.delete(requestedGroup);
   }
 });
 
@@ -84,5 +155,6 @@ if (process.env.NODE_ENV === "production") {
 }
 
 app.listen(PORT, () => {
+  console.log("OrbitWatch satellite catalogue cache is enabled (two-hour refresh interval).");
   console.log(`OrbitWatch server running at http://localhost:${PORT}`);
 });
