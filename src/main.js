@@ -255,19 +255,22 @@ async function initOrbitalVisualizer() {
           model: {
             uri: "/models/orbitwatch-satellite.gltf",
             scale: 1,
-            minimumPixelSize: 18,
-            maximumScale: 100000,
+            minimumPixelSize: 36,
+            maximumScale: 180000,
             runAnimations: false
           },
           label: {
             text: record.OBJECT_NAME,
-            font: "10px monospace",
+            font: "bold 13px monospace",
             fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.fromCssColorString("#020611"),
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
             showBackground: true,
-            backgroundColor: Cesium.Color.fromCssColorString("#081323").withAlpha(0.8),
-            pixelOffset: new Cesium.Cartesian2(10, -10),
-            scale: 0.8,
-            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 9000000)
+            backgroundColor: Cesium.Color.fromCssColorString("#081323").withAlpha(0.96),
+            pixelOffset: new Cesium.Cartesian2(14, -14),
+            scale: 1,
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 5500000)
           }
         });
         tracked.push({ record, satrec, entity, paletteIndex: tracked.length });
