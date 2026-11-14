@@ -144,3 +144,13 @@ footer span { color: var(--cyan); padding: 0 5px; }
   .visualizer-heading { align-items: flex-start; flex-direction: column; }
 }
 @media (max-width: 420px) { .stats-grid, .module-grid { grid-template-columns: 1fr; } }
+
+.orbit-selected { display: block; }
+.orbit-selected-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+.orbit-selected-heading strong { color: var(--cyan); font: 11px "DM Mono",monospace; }
+.orbit-selected-heading span { color: #8190aa; font: 9px "DM Mono",monospace; }
+.orbit-selected-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 9px; }
+.orbit-selected-metrics span { display: block; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(5,11,23,.5); }
+.orbit-selected-metrics small { display: block; color: #71809c; font: 8px "DM Mono",monospace; letter-spacing: .6px; }
+.orbit-selected-metrics b { display: block; margin-top: 6px; color: #dce8fa; font: 10px "DM Mono",monospace; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .orbit-selected-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } }
