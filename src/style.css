@@ -98,3 +98,16 @@ footer span { color: var(--cyan); padding: 0 5px; }
 @media (max-width: 420px) {
   .stats-grid, .module-grid { grid-template-columns: 1fr; }
 }
+
+
+[hidden] { display: none !important; }
+.module-view { display: grid; gap: 18px; margin-top: 8px; }
+.module-hero, .module-details { border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(120deg, #101a31, #0b1120); padding: 30px; }
+.module-hero-icon { color: var(--cyan); font-size: 28px; margin-bottom: 20px; }
+.module-hero h2 { margin: 9px 0; font-size: 30px; letter-spacing: -1px; }
+.module-hero p { max-width: 680px; color: #9aa7c0; font-size: 13px; line-height: 1.8; }
+.module-status-pill { display: inline-block; margin-top: 10px; border: 1px solid rgba(101,228,244,.3); border-radius: 20px; padding: 7px 11px; color: var(--cyan); font: 9px "DM Mono", monospace; letter-spacing: 1px; }
+.module-details h3 { margin: 9px 0 16px; font-size: 16px; }
+.module-details ul { display: grid; gap: 12px; padding-left: 20px; color: #aab5ca; font-size: 12px; line-height: 1.7; }
+.module-details li::marker { color: var(--cyan); }
+.module-note { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); color: #74829e; font-size: 11px; line-height: 1.7; }
