@@ -57,7 +57,7 @@ async function saveGroupCooldown(group, until) {
 }
 
 function getNextAllowedTime(errorMessage) {
-  const match = errorMessage.match(/at (\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}) UTC/i);
+  const match = errorMessage.match(/at (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC/i);
   if (match) {
     const lastDownload = Date.parse(`${match[1].replace(" ", "T")}Z`);
     if (Number.isFinite(lastDownload)) {
@@ -81,6 +81,7 @@ function sendCatalogue(res, group, entry, cached, stale = false) {
     source: "CelesTrak",
     group,
     cached,
+    stale,
     fetchedAt: new Date(entry.fetchedAt).toISOString(),
     count: entry.satellites.length,
     satellites: entry.satellites
