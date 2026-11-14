@@ -248,6 +248,12 @@ async function initOrbitalVisualizer() {
           position,
           new Cesium.HeadingPitchRoll(0, 0, 0)
         );
+        const objectName = String(record.OBJECT_NAME || "").toUpperCase();
+        const modelTint = objectName.includes("ISS")
+          ? Cesium.Color.fromCssColorString("#62eaff")
+          : /DRAGON|SPX|CRS/.test(objectName)
+            ? Cesium.Color.fromCssColorString("#ffb45e")
+            : Cesium.Color.WHITE;
         const entity = viewer.entities.add({
           name: record.OBJECT_NAME,
           position,
@@ -255,8 +261,11 @@ async function initOrbitalVisualizer() {
           model: {
             uri: "/models/orbitwatch-satellite.gltf",
             scale: 1,
-            minimumPixelSize: 36,
+            minimumPixelSize: 22,
             maximumScale: 180000,
+            color: modelTint,
+            colorBlendMode: Cesium.ColorBlendMode.MIX,
+            colorBlendAmount: 0.65,
             runAnimations: false
           },
           label: {
@@ -353,7 +362,13 @@ async function initOrbitalVisualizer() {
       }
     });
     viewer.selectedEntityChanged.addEventListener(entity => {
-      if (!entity) return;
+      tracked.forEach(candidate => {
+        if (candidate.entity.model) candidate.entity.model.minimumPixelSize = candidate.entity === entity ? 42 : 22;
+      });
+      if (!entity) {
+        selectedItem = null;
+        return;
+      }
       selectedItem = tracked.find(candidate => candidate.entity === entity) || null;
       renderSelectedDetails();
     });
