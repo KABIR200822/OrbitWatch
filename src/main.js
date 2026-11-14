@@ -207,6 +207,8 @@ async function initOrbitalVisualizer() {
       credit: "© OpenStreetMap contributors"
     }));
     viewer.scene.globe.enableLighting = true;
+    // Ensure orbit lines are occluded by the Earth's surface on the far side.
+    viewer.scene.globe.depthTestAgainstTerrain = true;
     viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#050914");
     viewer.camera.setView({
       destination: Cesium.Cartesian3.fromDegrees(15, 18, 24500000),
