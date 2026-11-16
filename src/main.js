@@ -1,6 +1,9 @@
 import "./style.css";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const apiUrl = path => `${API_BASE_URL}${path}`;
+
 const app = document.querySelector("#app");
 
 app.innerHTML = `
@@ -92,7 +95,7 @@ function formatNumber(value, digits = 2) {
 
 async function checkBackend() {
   try {
-    const response = await fetch("/api/health");
+    const response = await fetch(apiUrl("/api/health"));
     const data = await response.json();
     if (data.status === "online") {
       document.querySelector(".live-label").innerHTML = '<span class="status-dot"></span> BACKEND CONNECTED';
@@ -153,7 +156,7 @@ async function loadSatelliteExplorer(group) {
   const selectedGroup = group || selector.value;
   results.innerHTML = '<div class="loading-state"><span class="loading-spinner"></span> Contacting CelesTrak catalogue…</div>';
   try {
-    const response = await fetch(`/api/satellites?group=${encodeURIComponent(selectedGroup)}`);
+    const response = await fetch(apiUrl(`/api/satellites?group=${encodeURIComponent(selectedGroup)}`));
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.details || payload.error || "Satellite data request failed.");
     satelliteRecords = payload.satellites || [];
@@ -218,7 +221,7 @@ async function initOrbitalVisualizer() {
     viewer.clock.multiplier = 1;
 
     const selectedGroup = document.querySelector("#orbit-group")?.value || "STATIONS";
-    const response = await fetch(`/api/satellites?group=${encodeURIComponent(selectedGroup)}`);
+    const response = await fetch(apiUrl(`/api/satellites?group=${encodeURIComponent(selectedGroup)}`));
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.details || payload.error || "Could not retrieve orbital elements.");
     const records = (payload.satellites || []).filter(item =>
