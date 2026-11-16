@@ -11,6 +11,15 @@ const cacheDirectory = path.join(currentDirectory, ".cache");
 
 app.use(express.json());
 
+// The GitHub Pages frontend is static and calls this read-only public API.
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 const CACHE_DURATION_MS = 2 * 60 * 60 * 1000;
 const ERROR_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const UPDATE_BUFFER_MS = 60 * 1000;
